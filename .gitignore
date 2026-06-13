@@ -1,0 +1,14 @@
+# PowerShell
+*.ps1.xml
+*.psm1
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

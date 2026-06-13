@@ -31,9 +31,13 @@ public class W32 {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cw, int ch, uint f);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int ht, bool b);
+    [DllImport("user32.dll")] public static extern bool GetWindowPlacement(IntPtr h, ref WPLACEMENT wp);
+    [DllImport("user32.dll")] public static extern bool SetWindowPlacement(IntPtr h, ref WPLACEMENT wp);
     public delegate bool EnumWP(IntPtr h, IntPtr l);
     public struct RECT { public int L,T,R,B; }
-    public const int SW_RESTORE=9, SW_SHOWNORMAL=1;
+    public struct POINT { public int X,Y; }
+    public struct WPLACEMENT { public uint length; public uint flags; public uint showCmd; public POINT ptMin; public POINT ptMax; public RECT rcNormal; }
+    public const int SW_RESTORE=9, SW_SHOWNORMAL=1, SW_MINIMIZE=6;
     public const uint SWP_SHOWWINDOW=0x0040;
     public static readonly IntPtr HWND_TOP=IntPtr.Zero;
     public class WE { public string T; public IntPtr H; public int P,A,X,Y,W,Ht; }
@@ -121,16 +125,54 @@ $ny = [Math]::Max(0, [int](($sh - $w.Ht) / 2))
 Write-Host "Screen: ${sw}x${sh}"
 Write-Host "Target center: ($nx, $ny)`n"
 
-# Move
-$null = [W32]::SetWindowPos($w.H, [W32]::HWND_TOP, $nx, $ny, $w.W, $w.Ht, [W32]::SWP_SHOWWINDOW)
-Start-Sleep -Milliseconds 200
-$null = [W32]::MoveWindow($w.H, $nx, $ny, $w.W, $w.Ht, $true)
-Start-Sleep -Milliseconds 200
+# Move - Strategy: SetWindowPlacement + minimize/restore bypasses game hooks
+Write-Host "Centering..."
+$moved = $false
+
+# Method 1: SetWindowPlacement (sets the "restored" position)
+$wp = New-Object W32+WPLACEMENT
+$wp.length = [System.Runtime.InteropServices.Marshal]::SizeOf($wp)
+$null = [W32]::GetWindowPlacement($w.H, [ref]$wp)
+$wp.rcNormal.L = $nx
+$wp.rcNormal.T = $ny
+$wp.rcNormal.R = $nx + $w.W
+$wp.rcNormal.B = $ny + $w.Ht
+$null = [W32]::SetWindowPlacement($w.H, [ref]$wp)
+
+# If window is already in restored state, toggle min/restore to apply placement
+[W32]::ShowWindow($w.H, [W32]::SW_MINIMIZE) | Out-Null
+Start-Sleep -Milliseconds 300
+[W32]::ShowWindow($w.H, [W32]::SW_RESTORE) | Out-Null
+Start-Sleep -Milliseconds 500
 
 # Verify
 $verify = New-Object W32+RECT
 [W32]::GetWindowRect($w.H, [ref]$verify)
 $moved = ($verify.L -eq $nx -and $verify.T -eq $ny)
+
+# Method 2: If placement didn't work, try raw SetWindowPos + MoveWindow
+if (-not $moved) {
+    Write-Host "Placement method failed, trying direct move..."
+    $null = [W32]::SetWindowPos($w.H, [W32]::HWND_TOP, $nx, $ny, $w.W, $w.Ht, [W32]::SWP_SHOWWINDOW)
+    Start-Sleep -Milliseconds 200
+    $null = [W32]::MoveWindow($w.H, $nx, $ny, $w.W, $w.Ht, $true)
+    Start-Sleep -Milliseconds 200
+    [W32]::GetWindowRect($w.H, [ref]$verify)
+    $moved = ($verify.L -eq $nx -and $verify.T -eq $ny)
+}
+
+# Method 3: If still not moved, try ShowWindow hide/show cycle
+if (-not $moved) {
+    Write-Host "Direct move failed, trying show/hide cycle..."
+    [W32]::ShowWindow($w.H, 0) | Out-Null  # SW_HIDE
+    Start-Sleep -Milliseconds 200
+    [W32]::MoveWindow($w.H, $nx, $ny, $w.W, $w.Ht, $true) | Out-Null
+    [W32]::ShowWindow($w.H, [W32]::SW_SHOWNORMAL) | Out-Null
+    Start-Sleep -Milliseconds 500
+    [W32]::GetWindowRect($w.H, [ref]$verify)
+    $moved = ($verify.L -eq $nx -and $verify.T -eq $ny)
+}
+
 $onScreen = ($verify.L -gt -10000 -and $verify.T -gt -10000)
 
 if ($moved) {

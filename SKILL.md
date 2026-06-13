@@ -56,11 +56,13 @@ powershell -ExecutionPolicy Bypass -File "<skill-path>/scripts/center_window.ps1
 
 ### Step 3: If MoveWindow fails
 
-The script detects failure and reports it. If the window stays off-screen or unmoved, the target process likely runs with **administrator privileges** and blocks external window manipulation. In that case:
+The script self-elevates automatically. If the window doesn't move even with admin rights, the game has an active anti-move hook in its render loop that continuously resets the window position. In that case the Win32 API approach cannot work — the game overrides any external position change on every frame.
 
-```powershell
-Start-Process powershell -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -File "<skill-path>/scripts/center_window.ps1" -ProcessName "xxx"'
-```
+## How "off-screen" hiding works (梦幻西游)
+
+梦幻西游 does not truly minimize. When you click "minimize to tray", it moves its window to `(-21333, -21333)` — far outside the visible screen. This is an old trick that many MMOs use to "hide" the window without destroying the DirectX render surface. When you restore from tray, it moves the window back to its last known visible position.
+
+Our first successful "center" was actually not a move at all — the window was in this hidden off-screen state, and `ShowWindow(SW_RESTORE)` simply brought it back to where it was before being hidden (which happened to be centered).
 
 ## Common process names for Chinese games
 

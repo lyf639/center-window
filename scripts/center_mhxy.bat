@@ -1,11 +1,9 @@
 @echo off
 cd /d "%~dp0"
 
-:: Auto-elevate to admin if needed
 fltmc >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Requesting admin rights...
-    powershell -Command "Start-Process cmd.exe -ArgumentList '/c cd /d \"%~dp0\" ^&^& \"%~f0\"' -Verb RunAs -WorkingDirectory '%~dp0'" 2>nul
+    powershell -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \"\"%~dp0center_mhxy.ps1\"\" %*; Read-Host'"
     exit /b
 )
 

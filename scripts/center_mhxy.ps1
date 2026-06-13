@@ -5,13 +5,14 @@ param(
 
 # ============================================================
 #  Game Window Center Tool
-#  Default: mhtab/mhmain (MengHuanXiYou client)
-#  Usage: powershell -ExecutionPolicy Bypass -File center_mhxy.ps1
-#         powershell -ExecutionPolicy Bypass -File center_mhxy.ps1 -ProcessName notepad,calc
+#  Default target: mhtab / mhmain (MengHuanXiYou)
 # ============================================================
 
 $ErrorActionPreference = 'Continue'
 $Host.UI.RawUI.WindowTitle = 'Center Game Window'
+
+# Check if running as admin
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # ---- Win32 API ----
 Add-Type @'
@@ -34,28 +35,24 @@ public class W32 {
     public struct RECT { public int L,T,R,B; }
     public const int SW_RESTORE=9, SW_SHOWNORMAL=1;
     public const uint SWP_SHOWWINDOW=0x0040;
-    public static readonly IntPtr HWND_TOP = IntPtr.Zero;
+    public static readonly IntPtr HWND_TOP=IntPtr.Zero;
     public class WE { public string T; public IntPtr H; public int P,A,X,Y,W,Ht; }
-
     public static WE[] FindWindows(int[] pids) {
-        var r = new List<WE>();
-        var hs = new HashSet<int>(pids);
-        EnumWindows(delegate(IntPtr h, IntPtr _) {
-            if (!IsWindowVisible(h)) return true;
-            uint p=0; GetWindowThreadProcessId(h, out p);
-            if (!hs.Contains((int)p)) return true;
-            int l = GetWindowTextLength(h);
-            if (l > 0) {
-                var sb = new StringBuilder(l+1); GetWindowText(h, sb, sb.Capacity);
-                RECT rc;
-                if (GetWindowRect(h, out rc)) {
-                    int w=rc.R-rc.L, ht=rc.B-rc.T;
-                    if (w*ht > 5000)
-                        r.Add(new WE { T=sb.ToString(), H=h, P=(int)p, X=rc.L, Y=rc.T, W=w, Ht=ht, A=w*ht });
+        var r=new List<WE>();
+        var hs=new HashSet<int>(pids);
+        EnumWindows(delegate(IntPtr h,IntPtr _) {
+            if(!IsWindowVisible(h)) return true;
+            uint p=0;GetWindowThreadProcessId(h,out p);
+            if(!hs.Contains((int)p)) return true;
+            int l=GetWindowTextLength(h);
+            if(l>0){var sb=new StringBuilder(l+1);GetWindowText(h,sb,sb.Capacity);
+                RECT rc;if(GetWindowRect(h,out rc)){
+                    int w=rc.R-rc.L,ht=rc.B-rc.T;
+                    if(w*ht>5000) r.Add(new WE{T=sb.ToString(),H=h,P=(int)p,X=rc.L,Y=rc.T,W=w,Ht=ht,A=w*ht});
                 }
             }
             return true;
-        }, IntPtr.Zero);
+        },IntPtr.Zero);
         return r.ToArray();
     }
 }
@@ -63,11 +60,10 @@ public class W32 {
 Add-Type -AssemblyName System.Windows.Forms
 
 # ---- Main ----
-Write-Host ''
-Write-Host '================================='
-Write-Host '  Game Window Center Tool v1.0'
-Write-Host '================================='
-Write-Host ''
+Write-Host "`n================================="
+Write-Host "  Game Window Center Tool v2.1"
+if ($isAdmin) { Write-Host "  [Running as Administrator]" }
+Write-Host "=================================`n"
 
 # Collect PIDs
 $allPids = New-Object 'System.Collections.Generic.List[int]'
@@ -78,18 +74,15 @@ foreach ($pn in $ProcessName) {
         foreach ($p in $procs) { $allPids.Add($p.Id) }
         Write-Host "  Found $($procs.Count) process(es)"
     } else {
-        Write-Host '  Not found'
+        Write-Host "  Not found"
     }
 }
 
 if ($allPids.Count -eq 0) {
-    Write-Host ''
-    Write-Host 'ERROR: Game process not found. Please start the game first.'
+    Write-Host "`nERROR: Game not running."
     Write-Host "Tried: $($ProcessName -join ', ')"
-    Write-Host ''
-    Write-Host 'Tip: Right-click this file -> "Run with PowerShell"'
-    Write-Host 'Or:  powershell -File center_mhxy.ps1 -ProcessName <name>'
-    Write-Host ''
+    Write-Host "`nTip: Start the game first, then run this tool."
+    Write-Host "If the game IS running, try: -ProcessName <other name>"
     Read-Host 'Press Enter to exit'
     exit 1
 }
@@ -97,18 +90,17 @@ if ($allPids.Count -eq 0) {
 # Find windows
 $windows = [W32]::FindWindows($allPids.ToArray()) | Sort-Object A -Descending
 if ($windows.Count -eq 0) {
-    Write-Host 'ERROR: No visible game window (area > 5000px) found.'
+    Write-Host "ERROR: No visible game window (min area=5000px)."
     Read-Host 'Press Enter to exit'
     exit 1
 }
 
-# Pick the largest one
+# Pick the largest window
 $w = $windows[0]
-Write-Host ''
-Write-Host "Target: $($w.T)"
+Write-Host "`nTarget: $($w.T)"
 Write-Host "Size: $($w.W)x$($w.Ht)  Pos: ($($w.X), $($w.Y))"
 
-# Restore if off-screen or minimized
+# Restore if needed
 $offScreen = ($w.X -lt -10000 -or $w.Y -lt -10000)
 $minimized = [W32]::IsIconic($w.H)
 if ($offScreen -or $minimized) {
@@ -126,10 +118,8 @@ $sw = $screen.Bounds.Width
 $sh = $screen.Bounds.Height
 $nx = [Math]::Max(0, [int](($sw - $w.W) / 2))
 $ny = [Math]::Max(0, [int](($sh - $w.Ht) / 2))
-
 Write-Host "Screen: ${sw}x${sh}"
-Write-Host "Target center: ($nx, $ny)"
-Write-Host ''
+Write-Host "Target center: ($nx, $ny)`n"
 
 # Move
 $null = [W32]::SetWindowPos($w.H, [W32]::HWND_TOP, $nx, $ny, $w.W, $w.Ht, [W32]::SWP_SHOWWINDOW)
@@ -146,17 +136,26 @@ $onScreen = ($verify.L -gt -10000 -and $verify.T -gt -10000)
 if ($moved) {
     Write-Host '*** SUCCESS! Window centered. ***'
 } elseif ($onScreen) {
-    Write-Host "Window moved to ($($verify.L), $($verify.T)). Check screen."
+    Write-Host "Window at ($($verify.L), $($verify.T)). Not centered."
+    if (-not $isAdmin) {
+        Write-Host "`n========================================"
+        Write-Host "  ADMIN RIGHTS REQUIRED"
+        Write-Host "========================================"
+        Write-Host "The game runs as Administrator and blocks"
+        Write-Host "window moves from normal programs."
+        Write-Host "`nSOLUTION: Right-click center_mhxy.bat"
+        Write-Host "          -> Run as administrator"
+        Write-Host "========================================"
+    } else {
+        Write-Host "Game is actively blocking window moves."
+        Write-Host "Try: switch the game to windowed mode first."
+    }
 } else {
-    Write-Host 'FAILED: Window still off-screen.'
-    Write-Host ''
-    Write-Host '========================================'
-    Write-Host '  Admin rights may be required!'
-    Write-Host '========================================'
-    Write-Host 'The game likely runs as Administrator, blocking window moves.'
-    Write-Host 'Use the .bat launcher (double-click) which auto-elevates.'
-    Write-Host ''
+    Write-Host "FAILED: Window still off-screen."
+    if (-not $isAdmin) {
+        Write-Host "Right-click center_mhxy.bat -> Run as administrator"
+    }
 }
 
-Write-Host ''
+Write-Host ""
 Read-Host 'Press Enter to exit'

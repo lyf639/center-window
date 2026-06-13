@@ -1,60 +1,45 @@
 # Center Window
 
-将任意窗口移动到屏幕正中央的 PowerShell 工具 / Claude Code Skill。
+双击一键将梦幻西游（或其他程序）窗口移到屏幕正中央。
 
-## 功能
+## 怎么用
 
-- 按**进程名**或**窗口标题关键词**定位目标窗口
-- 自动恢复最小化或离屏窗口
-- 支持多显示器（选择目标屏幕）
-- 检测提权需求（管理员进程窗口）
-- 列出所有可见窗口以辅助定位
+1. 把 `center_mhxy.bat` 和 `center_mhxy.ps1` 放到同一个文件夹
+2. **双击 `center_mhxy.bat`**
+3. 弹出 UAC 点「是」
+4. 完成
 
-## 一键使用（无需 Claude）
+就这么简单。不需要 Claude，不需要安装任何东西，Windows 自带 PowerShell 就能跑。
 
-将 `center_mhxy.bat` 和 `center_mhxy.ps1` 放到同一个文件夹，**双击 .bat** 即可。
+## 原理
 
-脚本会：
-1. 自动检测管理员权限
-2. 不够则弹出 UAC 提权（和游戏同级权限才能移动窗口）
-3. 找到 `mhtab` / `mhmain` 进程的最大窗口
-4. 如果窗口离屏（`-21333, -21333`），先恢复
-5. 移动到屏幕正中央
+梦幻西游以管理员身份运行，普通程序无法移动它的窗口。脚本会自动检测权限、不够就提权，然后用 Win32 API 把窗口移到正中央。
 
-## 自定义其他程序
+窗口如果在"离屏"状态（游戏最小化到托盘时会把窗口藏到屏幕外 `-21333` 的位置），脚本会先恢复再居中。
+
+## 自定义
+
+默认目标是梦幻西游（`mhtab` + `mhmain` 进程）。要居中其他程序，命令行传参：
 
 ```powershell
 .\center_mhxy.ps1 -ProcessName notepad
-.\center_mhxy.ps1 -ProcessName calc,notepad
+.\center_mhxy.ps1 -ProcessName calc,firefox
 ```
 
-## 为什么游戏需要管理员权限才能移动？
-
-梦幻西游等 MMO 游戏以管理员身份运行，并持续在渲染循环中重置窗口位置。同级别的 `MoveWindow` / `SetWindowPos` 调用可以覆盖游戏的位置锁定。
-
-## 窗口"离屏"是什么？
-
-梦幻西游最小化到托盘时，并不真正最小化——而是把窗口移到 `(-21333, -21333)`（屏幕外）。这是一个保持 DirectX 渲染表面不被销毁的老技巧。恢复时窗口回到之前可见的位置。
-
-## 安装为 Claude Code Skill
-
-将 `skills/center-window/` 目录放到 `.claude/skills/` 下。
-
-## 参数
-
-| 参数 | 说明 |
-|------|------|
-| `-ProcessName` | 进程名（不含 .exe），可多个 |
-| `-TitleKeyword` | 窗口标题匹配关键词 |
-| `-List` | 列出所有可见窗口 |
-| `-MonitorIndex` | 目标显示器编号（默认 0 = 主屏） |
+或者修改 `.ps1` 第 1 行 `$ProcessName` 的默认值。
 
 ## 常见游戏进程名
 
 | 游戏 | 进程名 |
 |------|--------|
-| 梦幻西游 | `mhtab` (主窗口), `mhmain` (登录器) |
+| 梦幻西游 | `mhtab`（主窗口）、`mhmain`（登录器） |
 | 大话西游 | `dh2` |
+
+## 系统要求
+
+- Windows 10 / 11
+- 游戏以管理员身份运行时需要 UAC 授权
+- **不兼容 macOS / Linux**（Windows 专属 Win32 API）
 
 ## License
 
